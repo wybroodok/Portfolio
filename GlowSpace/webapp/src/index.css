@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/* Тёмная тема переключается классом .dark на <html> (см. src/theme.ts),
+   а не системной настройкой prefers-color-scheme — управляется тумблером
+   в Настройках. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Палитра в духе самого Telegram (тёмно-серый с тёмно-синим в dark, синий
+   акцент вместо розового) — CSS-переменные меняют ЗНАЧЕНИЕ под .dark, поэтому
+   классы вроде bg-card ниже не нуждаются в паре dark:bg-... на каждом
+   элементе — тема подхватывается автоматически везде. */
+:root {
+  --tg-bg: #ffffff;
+  --tg-bg-secondary: #eef1f4;
+  --tg-card: #ffffff;
+  --tg-text: #0b0d12;
+  --tg-hint: #85929e;
+  --tg-border: #e2e6ea;
+  --tg-accent: #2ea6e8;
+  --tg-accent-soft: #e5f3fc;
+  --tg-header-bg: #ffffff;
+}
+.dark {
+  /* Тёмно-серый с тёмно-синим оттенком, как в самом Telegram (Desktop night
+     theme / iOS dark), а не нейтрально-чёрный. */
+  --tg-bg: #1c2733;
+  --tg-bg-secondary: #131c26;
+  --tg-card: #212e3c;
+  --tg-text: #eef2f6;
+  --tg-hint: #7f92a3;
+  --tg-border: #2c3b4a;
+  --tg-accent: #56b8f5;
+  --tg-accent-soft: #1e3a4d;
+  --tg-header-bg: #212e3c;
+}
+
+@theme {
+  --color-app: var(--tg-bg-secondary);
+  --color-card: var(--tg-card);
+  --color-primary: var(--tg-text);
+  --color-hint: var(--tg-hint);
+  --color-tgline: var(--tg-border);
+  --color-accent: var(--tg-accent);
+  --color-accent-soft: var(--tg-accent-soft);
+  --color-header: var(--tg-header-bg);
+
+  /* Более скруглённый, менее резкий дизайн — переопределяем сами токены
+     радиуса, чтобы rounded-xl/2xl/3xl везде в приложении стали крупнее без
+     правки каждого компонента по отдельности. */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.375rem;
+  --radius-3xl: 1.75rem;
+
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+html {
+  /* iOS Safari умеет незаметно увеличивать мелкий текст ("text inflation"),
+     из-за чего размер, заданный в CSS (например 10px в нижнем меню), на деле
+     рендерится крупнее расчётного и не помещается в отведённое место. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--tg-bg-secondary);
+  color: var(--tg-text);
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Лёгкая CSS-анимация появления страницы при монтировании — только
+   transform, БЕЗ opacity (без View Transitions API: она давала подвисающий
+   рывок во встроенном WebView Telegram на телефоне, хотя в десктопном
+   браузере выглядела гладко — ненадёжна именно там, где нужнее всего).
+   opacity 0→1 на старте анимации на долю кадра открывает фон body под
+   ещё прозрачной страницей — он чуть темнее/светлее карточек, и это
+   читалось как микро-затемнение экрана при каждом переходе. Страница и
+   так непрозрачна (bg-app на корневом div), поэтому transform без opacity
+   даёт тот же эффект "въезжания" без просвечивания фона. */
+.page-enter {
+  animation: slideUp 0.22s var(--ease-spring);
+}
+@keyframes slideUp {
+  from { transform: translateY(8px); }
+  to   { transform: translateY(0); }
+}

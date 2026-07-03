@@ -1,0 +1,309 @@
+// Kinetik — Prisma schema
+// PostgreSQL + Prisma. Multi-tenant (Workspace) task tracker with a Kanban board.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
+
+/// Kanban columns. The order of the values here is the on-board column order.
+enum TaskStatus {
+  BACKLOG // «К изучению»
+  IN_PROGRESS // «В работе»
+  IN_REVIEW // «На проверке»
+  DONE // «Готово»
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// Role of a user *within a given workspace* (tenant-scoped, not global).
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum WorkspaceType {
+  PERSONAL // личная доска — только владелец
+  TEAM // командная доска — можно приглашать сотрудников
+}
+
+// ─────────────────────────────────────────────────────────────
+// Identity (compatible with Auth.js / NextAuth Prisma adapter)
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  hashedPassword String? // for credentials login; null for OAuth-only users
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Auth.js relations
+  accounts Account[]
+  sessions Session[]
+
+  // Domain relations
+  memberships    Member[]
+  assignments    TaskAssignee[]
+  createdTasks   Task[]         @relation("TaskCreator")
+  comments       Comment[]
+  sentInvites    Invite[]       @relation("InviteInviter")
+  attachments    Attachment[]
+  notifications  Notification[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Tenant: Workspace + Membership (the multitenancy boundary)
+// ─────────────────────────────────────────────────────────────
+
+model Workspace {
+  id        String        @id @default(cuid())
+  name      String
+  slug      String        @unique // used in URLs: /w/[slug]/board
+  type      WorkspaceType @default(TEAM)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  members Member[]
+  tasks   Task[]
+  invites Invite[]
+  labels  Label[]
+}
+
+/// Join table between User and Workspace. This is the tenancy pivot —
+/// every domain query is scoped through a Member row.
+model Member {
+  id          String     @id @default(cuid())
+  role        MemberRole @default(MEMBER)
+  createdAt   DateTime   @default(now())
+
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId]) // a user joins a workspace once
+  @@index([workspaceId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Tasks (Kanban cards) + Comments
+// ─────────────────────────────────────────────────────────────
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?      @db.Text // Markdown
+  status      TaskStatus   @default(BACKLOG)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+
+  /// Fractional index used for ordering *within a column*. Inserting between
+  /// two cards = midpoint of neighbours, so a move touches ONE row, not the
+  /// whole column. See src/lib/positioning.ts.
+  position    Float
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Tenant scope — every task belongs to exactly one workspace.
+  workspaceId String
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  assignees   TaskAssignee[]
+
+  creatorId   String
+  creator     User         @relation("TaskCreator", fields: [creatorId], references: [id])
+
+  comments    Comment[]
+  labels      TaskLabel[]
+  checklist   ChecklistItem[]
+  attachments Attachment[]
+  notifications Notification[]
+
+  /// Set when a due-date reminder has been generated, so we don't spam the
+  /// assignee with duplicate notifications for the same task.
+  reminderSentAt DateTime?
+
+  // Hot path: "load the board" = tasks for a workspace, grouped by status, ordered by position.
+  @@index([workspaceId, status, position])
+  @@index([dueDate])
+}
+
+/// Join table: a task can have many assignees, a user many tasks.
+model TaskAssignee {
+  taskId String
+  userId String
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Invitations ("Добавить сотрудника")
+// ─────────────────────────────────────────────────────────────
+
+model Invite {
+  id          String     @id @default(cuid())
+  email       String // invited email (may not have a User yet)
+  token       String     @unique @default(cuid()) // goes into the invite link
+  role        MemberRole @default(MEMBER)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime   @default(now())
+
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedById String
+  invitedBy   User       @relation("InviteInviter", fields: [invitedById], references: [id])
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Labels / tags — workspace-scoped, many-to-many with Task
+// ─────────────────────────────────────────────────────────────
+
+model Label {
+  id          String    @id @default(cuid())
+  name        String
+  color       String    @default("neutral") // UI colour token (see labelColors)
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks       TaskLabel[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model TaskLabel {
+  taskId  String
+  labelId String
+  task    Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label   Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  @@index([labelId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Checklists inside a task
+// ─────────────────────────────────────────────────────────────
+
+model ChecklistItem {
+  id       String  @id @default(cuid())
+  content  String
+  done     Boolean @default(false)
+  position Float // ordering within the task's checklist
+
+  taskId   String
+  task     Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, position])
+}
+
+// ─────────────────────────────────────────────────────────────
+// File attachments (stored locally under ./uploads, served via /api/files/[id])
+// ─────────────────────────────────────────────────────────────
+
+model Attachment {
+  id           String   @id @default(cuid())
+  filename     String
+  storageKey   String // path/key on disk (or object storage) — never exposed directly
+  mimeType     String
+  size         Int
+  createdAt    DateTime @default(now())
+
+  taskId       String
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+
+  @@index([taskId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// In-app notifications (due-date reminders, etc.)
+// ─────────────────────────────────────────────────────────────
+
+enum NotificationType {
+  DUE_SOON
+  OVERDUE
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  message   String
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String
+  task      Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // One notification per (user, task, type) — no duplicate reminders.
+  @@unique([userId, taskId, type])
+  @@index([userId, read])
+}

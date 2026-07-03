@@ -1,0 +1,38 @@
+# Секреты
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# Зависимости
+node_modules/
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Сборки / кэш
+dist/
+dist-ssr/
+build/
+out/
+.next/
+.vite/
+*.tsbuildinfo
+
+# Базы данных
+*.db
+*.sqlite
+*.sqlite3
+
+# Служебное / OS / редакторы
+.claude/
+*.lock
+.DS_Store
+*.log
+.vscode/
+.idea/

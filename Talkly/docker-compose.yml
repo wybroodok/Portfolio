@@ -1,0 +1,65 @@
+# Talkly — локальная инфраструктура + демонстрация горизонтального масштабирования.
+# Два инстанса бэкенда (api1/api2) общаются через один Redis-адаптер: сообщение,
+# отправленное в комнату на api1, доставляется участникам, сидящим на api2.
+# Nginx балансирует с ip_hash (sticky) — обязательно для WebSocket-хендшейка.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: talkly
+      POSTGRES_PASSWORD: talkly
+      POSTGRES_DB: talkly
+    ports: ['5432:5432']
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./server/src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U talkly']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api1: &api
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      INSTANCE_ID: api1
+      PORT: 4000
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://talkly:talkly@postgres:5432/talkly
+      CORS_ORIGIN: http://localhost:5173
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in a .env file next to docker-compose.yml}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  api2:
+    <<: *api
+    environment:
+      INSTANCE_ID: api2
+      PORT: 4000
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://talkly:talkly@postgres:5432/talkly
+      CORS_ORIGIN: http://localhost:5173
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in a .env file next to docker-compose.yml}
+
+  gateway:
+    image: nginx:alpine
+    ports: ['4000:80']
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [api1, api2]
+
+volumes:
+  pgdata:

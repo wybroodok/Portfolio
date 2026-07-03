@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-charcoal text-gray-200 antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  /* Тонкий индустриальный скроллбар */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-hairline rounded;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-panel-hi;
+  }
+}

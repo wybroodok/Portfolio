@@ -1,0 +1,25 @@
+.smart-image {
+  opacity: 0;
+  transition: opacity 0.9s var(--ease), transform 1.2s var(--ease);
+  will-change: opacity;
+}
+.smart-image.is-loaded {
+  opacity: 1;
+}
+.smart-image--fallback {
+  opacity: 1;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(120% 120% at 30% 20%, #1c1c1c, #0a0a0a 70%);
+  border: 1px solid var(--line);
+}
+.smart-image--fallback span {
+  font-family: var(--serif);
+  font-size: clamp(1.4rem, 4vw, 2.6rem);
+  letter-spacing: 0.4em;
+  color: var(--text-faint);
+  padding-left: 0.4em;
+}
