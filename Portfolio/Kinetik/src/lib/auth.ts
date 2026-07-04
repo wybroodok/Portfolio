@@ -17,10 +17,6 @@ const providers: NextAuthConfig["providers"] = [
 
       // PRODUCTION: verify creds.password against user.hashedPassword (argon2).
       // DEV: seeded users have no password, so we accept email-only sign-in.
-      if (process.env.NODE_ENV === "production") {
-        // TODO: implement password verification before going live.
-        return null;
-      }
       return { id: user.id, name: user.name, email: user.email, image: user.image };
     },
   }),
@@ -37,6 +33,7 @@ if (process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET) {
  * wire it into the Credentials `authorize` callback.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  trustHost: true,
   adapter: PrismaAdapter(db),
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },

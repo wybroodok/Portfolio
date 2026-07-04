@@ -15,16 +15,16 @@ export default function LoginPage() {
   const [email, setEmail] = useState("alice@kinetik.dev");
   const [pending, startTransition] = useTransition();
 
-  function login(withEmail: string) {
+function login(withEmail: string) {
     startTransition(async () => {
-      await signIn("credentials", {
+      const res = await signIn("credentials", {
         email: withEmail,
         password: "dev",
-        // Send to the root, which routes to the user's first board — or to
-        // onboarding if they have none. (Never hard-code a specific board:
-        // a new user isn't a member of it.)
-        redirectTo: "/",
+        redirect: false,
       });
+      if (res && !res.error) {
+        window.location.href = "/";
+      }
     });
   }
 

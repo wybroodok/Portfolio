@@ -110,7 +110,7 @@ export const projects = [
     cover: '#0C0E1A',
     accent: '#5E6AD2',
     featured: true,
-    url: '/Kinetik',
+    url: 'https://kinetik.wybroodok.com',
     metrics: [
       { label: 'Backend', value: 'Server Actions' },
       { label: 'DB', value: 'Postgres' },
